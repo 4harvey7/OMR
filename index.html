@@ -1,1 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OMR Ground-Truth Labeler</title>
+<style>
+  :root{
+    --paper:#F2EEE3;
+    --paper-line:#D9D2BE;
+    --graphite:#2A2A28;
+    --graphite-soft:#6B6558;
+    --pencil:#D9A62E;
+    --pencil-dark:#A87B12;
+    --pen:#B23A2E;
+    --pen-dark:#8C2C22;
+    --card:#FBF9F3;
+    --ok:#3E6B4F;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      repeating-linear-gradient(var(--paper) 0 27px, var(--paper-line) 27px 28px),
+      var(--paper);
+    color:var(--graphite);
+    font-family:ui-sans-serif,Verdana,Geneva,sans-serif;
+    padding:28px 18px 80px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    border-bottom:3px solid var(--graphite);
+    padding-bottom:14px; margin-bottom:22px; flex-wrap:wrap; gap:10px;
+  }
+  h1{
+    font-family:Georgia,"Times New Roman",serif;
+    font-size:30px; margin:0; letter-spacing:.2px;
+  }
+  h1 span{color:var(--pen);}
+  .sub{font-size:13px;color:var(--graphite-soft); margin-top:4px; max-width:520px;}
+  .stamp{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+    border:1.5px solid var(--pen); color:var(--pen);
+    padding:5px 10px; border-radius:3px; transform:rotate(-2deg);
+    white-space:nowrap;
+  }
 
+  .card{
+    background:var(--card); border:1px solid var(--paper-line);
+    border-radius:6px; box-shadow:0 1px 0 var(--paper-line);
+    padding:18px; margin-bottom:20px;
+  }
+  .card h2{
+    font-family:Georgia,serif; font-size:16px; margin:0 0 12px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .card h2 .no{
+    font-family:ui-monospace,monospace; font-size:11px; color:#fff;
+    background:var(--graphite); border-radius:50%; width:20px; height:20px;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+
+  .dropzone{
+    border:2px dashed var(--graphite-soft); border-radius:6px; padding:22px;
+    text-align:center; cursor:pointer; transition:.15s;
+    font-size:13px; color:var(--graphite-soft);
+  }
+  .dropzone:hover, .dropzone.drag{ border-color:var(--pen); color:var(--pen); background:#FBF3EC; }
+  .dropzone input{display:none;}
+  .queue{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .qthumb{
+    width:56px; height:56px; border-radius:4px; overflow:hidden; cursor:pointer;
+    border:2px solid transparent; position:relative; flex-shrink:0;
+    background:#eee;
+  }
+  .qthumb.active{border-color:var(--pen);}
+  .qthumb img{width:100%; height:100%; object-fit:cover; display:block;}
+  .qthumb .done{
+    position:absolute; bottom:0; right:0; background:var(--ok); color:#fff;
+    font-size:9px; padding:1px 3px; border-top-left-radius:4px;
+  }
+
+  .workspace{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:18px;}
+  @media(max-width:880px){ .workspace{grid-template-columns:1fr;} }
+
+  .preview{
+    border:1px solid var(--paper-line); border-radius:6px; background:#111;
+    display:flex; align-items:center; justify-content:center; min-height:260px;
+    overflow:hidden;
+  }
+  .preview img{max-width:100%; max-height:70vh; display:block;}
+  .preview .empty{color:#888; font-size:13px; font-family:ui-monospace,monospace;}
+  .fname{
+    font-family:ui-monospace,monospace; font-size:12px; color:var(--graphite-soft);
+    margin-top:8px; word-break:break-all;
+  }
+
+  .ptype{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .ptype button{
+    flex:1 1 auto; min-width:110px; padding:10px 8px; border-radius:5px;
+    border:1.5px solid var(--graphite-soft); background:#fff; cursor:pointer;
+    font-size:12.5px; font-weight:600; color:var(--graphite);
+  }
+  .ptype button small{display:block; font-weight:400; font-size:10px; color:var(--graphite-soft);}
+  .ptype button.sel{ border-color:var(--pen); background:#FBF0EC; color:var(--pen-dark); }
+  .ptype button.sel small{color:var(--pen);}
+
+  table.rows{width:100%; border-collapse:collapse; font-size:12.5px;}
+  table.rows th{
+    text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--graphite-soft); padding:4px 4px; border-bottom:1px solid var(--paper-line);
+  }
+  table.rows td{ padding:5px 4px; border-bottom:1px solid #EDE8D9; vertical-align:middle; }
+  table.rows tr.section td{
+    background:var(--graphite); color:#fff; font-weight:700; letter-spacing:.03em;
+    font-size:11px; text-transform:uppercase; padding:6px 8px;
+  }
+  .qlabel{max-width:230px;}
+  .bubbles{display:flex; gap:4px;}
+  .bubble{
+    width:26px; height:26px; border-radius:50%; border:1.5px solid var(--graphite-soft);
+    background:#fff; cursor:pointer; font-family:ui-monospace,monospace; font-size:10.5px;
+    display:flex; align-items:center; justify-content:center; color:var(--graphite-soft);
+    flex-shrink:0;
+  }
+  .bubble.sel{ background:var(--pen); border-color:var(--pen-dark); color:#fff; }
+  .bubble.blank{ font-size:9px; }
+
+  textarea{
+    width:100%; border:1px solid var(--paper-line); border-radius:5px; padding:8px;
+    font-family:inherit; font-size:12.5px; resize:vertical; min-height:44px; margin-top:12px;
+  }
+
+  .actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+  button.primary, button.ghost, button.danger{
+    padding:10px 16px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer;
+    border:1.5px solid var(--graphite);
+  }
+  button.primary{ background:var(--graphite); color:#fff; }
+  button.primary:hover{ background:#000; }
+  button.ghost{ background:transparent; color:var(--graphite); }
+  button.danger{ background:transparent; color:var(--pen-dark); border-color:var(--pen-dark); }
+  button:disabled{ opacity:.4; cursor:not-allowed; }
+
+  .summary{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px;}
+  .stat{
+    border:1px solid var(--paper-line); border-radius:5px; padding:8px 14px; background:#fff;
+    min-width:110px;
+  }
+  .stat .n{font-family:Georgia,serif; font-size:22px; font-weight:700;}
+  .stat .l{font-size:10.5px; text-transform:uppercase; color:var(--graphite-soft); letter-spacing:.05em;}
+
+  table.log{width:100%; border-collapse:collapse; font-size:12px;}
+  table.log th{ text-align:left; padding:5px; font-size:10.5px; color:var(--graphite-soft); border-bottom:1px solid var(--paper-line); text-transform:uppercase;}
+  table.log td{ padding:5px; border-bottom:1px solid #EDE8D9; font-family:ui-monospace,monospace; }
+  table.log tr:hover{background:#F7F2E6;}
+  .tag{ padding:1px 6px; border-radius:3px; font-size:10.5px; font-weight:700; }
+  .tag.short{ background:#E5EEE7; color:var(--ok); }
+  .tag.long{ background:#F2E4CC; color:var(--pencil-dark); }
+  .tag.a4{ background:#E4E9F2; color:#33507A; }
+  .tag.legal{ background:#F2E1E1; color:var(--pen-dark); }
+  .rm{ cursor:pointer; color:var(--pen); font-weight:700; }
+
+  #toast{
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+    background:var(--graphite); color:#fff; padding:9px 18px; border-radius:20px;
+    font-size:12.5px; opacity:0; pointer-events:none; transition:.25s;
+  }
+  #toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>OMR Ground-Truth <span>Labeler</span></h1>
+      <div class="sub">Tag each scanned evaluation sheet by paper size and mark the true answer per row. Export the set and hand it + the photos back to build/verify the OMR pipeline against real data.</div>
+    </div>
+    <div class="stamp">short vs. long bond ✓ verified</div>
+  </header>
+
+  <div class="card">
+    <h2><span class="no">1</span>Load photos</h2>
+    <label class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept="image/*" multiple>
+      Click to choose scan photos, or drag them here — labeled one at a time, queue as many as you like.
+    </label>
+    <div class="queue" id="queue"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="no">2</span>Label the current sheet</h2>
+    <div class="workspace">
+      <div>
+        <div class="preview" id="preview"><div class="empty">no image selected</div></div>
+        <div class="fname" id="fname"></div>
+      </div>
+      <div>
+        <div class="ptype" id="ptype"></div>
+        <table class="rows" id="rowsTable"></table>
+        <textarea id="notes" placeholder="notes (optional) — e.g. faint pencil, photo taken at an angle, glare, folded corner…"></textarea>
+        <div class="actions">
+          <button class="primary" id="saveBtn" disabled>Save entry to dataset</button>
+          <button class="ghost" id="clearFormBtn">Reset form</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="no">3</span>Dataset</h2>
+    <div class="summary" id="summary"></div>
+    <table class="log" id="logTable">
+      <thead><tr><th>File</th><th>Type</th><th>Answered</th><th>Note</th><th>Labeled</th><th></th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
+    <div class="actions">
+      <button class="primary" id="exportBtn">Export dataset (.json)</button>
+      <button class="danger" id="clearAllBtn">Clear entire dataset</button>
+    </div>
+  </div>
+
+</div>
+<div id="toast"></div>
+
+<script>
+const MGMT_LABELS = [
+  "Gives reasonable course / subject assignments",
+  "Earns appreciation and kind attention from the students",
+  "Gives orientation about the subject and how students are evaluated",
+  "Gives tests and/or projects within the objectives of the course",
+  "Shows deep interest and concern in assisting the students",
+  "Manifests sympathetic insight into students' feelings",
+  "Checks and records test papers / term papers",
+  "Is on time and regular in meeting the class",
+  "Apportions fair subject / course assignments",
+  "Sustains the attention of the class for the whole period",
+];
+const PERF_LABELS = [
+  "Presents lesson clearly, methodically, and substantially",
+  "Motivates the students to learn",
+  "Facilitates learning with appropriate educational methods and techniques",
+  "Shows mastery of the lesson",
+  "Is ready for the class",
+  "Inspires students' self-reliance in their quest for knowledge",
+  "Knows when students have difficulty and finds ways to make it easy",
+  "Integrates values into the lesson",
+  "Speaks the language of instruction (English or Filipino) clearly and fluently",
+  "Delivers thought-provoking questions",
+];
+const RATINGS = ['O','VS','S','F','US'];
+const PAPER_TYPES = [
+  {id:'short', label:'Short Bond', sub:'8.5×11'},
+  {id:'long',  label:'Long Bond',  sub:'8.5×13'},
+  {id:'a4',    label:'A4',         sub:'8.27×11.69'},
+  {id:'legal', label:'Legal',      sub:'8.5×14'},
+];
+const STORAGE_KEY = 'omr-labels';
+
+let dataset = [];
+let queue = [];      // {file, url, done}
+let activeIdx = -1;
+let form = { paperType:null, answers:new Array(20).fill(null) };
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>t.classList.remove('show'), 1600);
+}
+
+async function loadDataset(){
+  try{
+    const res = await window.storage.get(STORAGE_KEY, false);
+    dataset = res && res.value ? JSON.parse(res.value) : [];
+  }catch(e){ dataset = []; }
+  renderDataset();
+}
+async function saveDataset(){
+  try{
+    await window.storage.set(STORAGE_KEY, JSON.stringify(dataset), false);
+  }catch(e){ toast('Storage error — dataset kept in-page only'); }
+}
+
+function buildPtype(){
+  const el = document.getElementById('ptype');
+  el.innerHTML = '';
+  PAPER_TYPES.forEach(pt=>{
+    const b = document.createElement('button');
+    b.innerHTML = `${pt.label}<small>${pt.sub}</small>`;
+    b.onclick = ()=>{ form.paperType = pt.id; buildPtype(); updateSaveEnabled(); };
+    if(form.paperType === pt.id) b.classList.add('sel');
+    el.appendChild(b);
+  });
+}
+
+function buildRows(){
+  const t = document.getElementById('rowsTable');
+  t.innerHTML = `<thead><tr><th style="width:26px">#</th><th>Question</th><th style="width:190px">Answer</th></tr></thead>`;
+  const tbody = document.createElement('tbody');
+
+  function sectionRow(label){
+    const tr = document.createElement('tr');
+    tr.className = 'section';
+    const td = document.createElement('td');
+    td.colSpan = 3; td.textContent = label;
+    tr.appendChild(td); tbody.appendChild(tr);
+  }
+  function bubbleRow(idx, label){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${idx+1}</td><td class="qlabel">${label}</td>`;
+    const td = document.createElement('td');
+    const wrap = document.createElement('div'); wrap.className = 'bubbles';
+    RATINGS.forEach(r=>{
+      const b = document.createElement('div');
+      b.className = 'bubble' + (form.answers[idx]===r ? ' sel':'');
+      b.textContent = r;
+      b.onclick = ()=>{ form.answers[idx] = r; buildRows(); };
+      wrap.appendChild(b);
+    });
+    const blank = document.createElement('div');
+    blank.className = 'bubble blank' + (form.answers[idx]==='blank' ? ' sel':'');
+    blank.textContent = '—';
+    blank.title = 'left unanswered on the sheet';
+    blank.onclick = ()=>{ form.answers[idx] = 'blank'; buildRows(); };
+    wrap.appendChild(blank);
+    td.appendChild(wrap);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+
+  sectionRow('Management (I)');
+  MGMT_LABELS.forEach((l,i)=>bubbleRow(i,l));
+  sectionRow('Teaching Performance (II)');
+  PERF_LABELS.forEach((l,i)=>bubbleRow(i+10,l));
+
+  t.appendChild(tbody);
+}
+
+function updateSaveEnabled(){
+  const answeredCount = form.answers.filter(a=>a).length;
+  document.getElementById('saveBtn').disabled = !(form.paperType && activeIdx>=0);
+}
+
+function renderQueue(){
+  const el = document.getElementById('queue');
+  el.innerHTML = '';
+  queue.forEach((q,i)=>{
+    const d = document.createElement('div');
+    d.className = 'qthumb' + (i===activeIdx?' active':'');
+    d.innerHTML = `<img src="${q.url}">` + (q.done?'<div class="done">✓</div>':'');
+    d.onclick = ()=>selectQueueItem(i);
+    el.appendChild(d);
+  });
+}
+
+function selectQueueItem(i){
+  activeIdx = i;
+  const q = queue[i];
+  document.getElementById('preview').innerHTML = `<img src="${q.url}">`;
+  document.getElementById('fname').textContent = q.file.name;
+  form = { paperType:null, answers:new Array(20).fill(null) };
+  document.getElementById('notes').value = '';
+  buildPtype(); buildRows(); updateSaveEnabled();
+  renderQueue();
+}
+
+function handleFiles(files){
+  Array.from(files).forEach(f=>{
+    if(!f.type.startsWith('image/')) return;
+    queue.push({ file:f, url:URL.createObjectURL(f), done:false });
+  });
+  renderQueue();
+  if(activeIdx===-1 && queue.length) selectQueueItem(0);
+}
+
+document.getElementById('fileInput').addEventListener('change', e=>handleFiles(e.target.files));
+const dz = document.getElementById('dropzone');
+dz.addEventListener('click', ()=>document.getElementById('fileInput').click());
+['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault(); dz.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault(); dz.classList.remove('drag');}));
+dz.addEventListener('drop', e=>handleFiles(e.dataTransfer.files));
+
+document.getElementById('clearFormBtn').onclick = ()=>{
+  form = { paperType:null, answers:new Array(20).fill(null) };
+  document.getElementById('notes').value = '';
+  buildPtype(); buildRows(); updateSaveEnabled();
+};
+
+document.getElementById('saveBtn').onclick = async ()=>{
+  if(activeIdx<0 || !form.paperType) return;
+  const q = queue[activeIdx];
+  const rows = MGMT_LABELS.map((l,i)=>({index:i, section:'management', label:l, answer:form.answers[i]||null}))
+    .concat(PERF_LABELS.map((l,i)=>({index:i+10, section:'performance', label:l, answer:form.answers[i+10]||null})));
+  const entry = {
+    filename: q.file.name,
+    paper_type: form.paperType,
+    notes: document.getElementById('notes').value.trim(),
+    labeled_at: new Date().toISOString(),
+    answered_count: rows.filter(r=>r.answer && r.answer!=='blank').length,
+    rows,
+  };
+  // replace any earlier entry for the same filename
+  dataset = dataset.filter(e=>e.filename !== entry.filename);
+  dataset.push(entry);
+  await saveDataset();
+  queue[activeIdx].done = true;
+  renderQueue(); renderDataset();
+  toast(`Saved "${entry.filename}"`);
+  // auto-advance to next un-done item
+  const next = queue.findIndex((q2,i)=> i>activeIdx && !q2.done);
+  if(next>=0) selectQueueItem(next);
+};
+
+function renderDataset(){
+  const counts = {short:0, long:0, a4:0, legal:0};
+  dataset.forEach(e=>{ if(counts[e.paper_type]!==undefined) counts[e.paper_type]++; });
+  const summary = document.getElementById('summary');
+  summary.innerHTML = `
+    <div class="stat"><div class="n">${dataset.length}</div><div class="l">total labeled</div></div>
+    <div class="stat"><div class="n">${counts.short}</div><div class="l">short bond</div></div>
+    <div class="stat"><div class="n">${counts.long}</div><div class="l">long bond</div></div>
+    <div class="stat"><div class="n">${counts.a4}</div><div class="l">a4</div></div>
+    <div class="stat"><div class="n">${counts.legal}</div><div class="l">legal</div></div>
+  `;
+  const body = document.getElementById('logBody');
+  body.innerHTML = '';
+  dataset.slice().reverse().forEach(e=>{
+    const tr = document.createElement('tr');
+    const d = new Date(e.labeled_at);
+    tr.innerHTML = `
+      <td>${e.filename}</td>
+      <td><span class="tag ${e.paper_type}">${e.paper_type}</span></td>
+      <td>${e.answered_count}/20</td>
+      <td>${(e.notes||'').slice(0,40)}</td>
+      <td>${d.toLocaleDateString()}</td>
+      <td class="rm" data-f="${e.filename}">remove</td>
+    `;
+    body.appendChild(tr);
+  });
+  body.querySelectorAll('.rm').forEach(el=>{
+    el.onclick = async ()=>{
+      dataset = dataset.filter(e=>e.filename !== el.dataset.f);
+      await saveDataset();
+      const q = queue.find(q=>q.file.name===el.dataset.f);
+      if(q) q.done = false;
+      renderQueue(); renderDataset();
+    };
+  });
+}
+
+document.getElementById('exportBtn').onclick = ()=>{
+  if(!dataset.length){ toast('Nothing to export yet'); return; }
+  const blob = new Blob([JSON.stringify(dataset, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `omr_ground_truth_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+};
+
+document.getElementById('clearAllBtn').onclick = async ()=>{
+  if(!confirm('Delete the entire saved dataset? This cannot be undone.')) return;
+  dataset = [];
+  await saveDataset();
+  queue.forEach(q=>q.done=false);
+  renderQueue(); renderDataset();
+};
+
+buildPtype(); buildRows(); updateSaveEnabled();
+loadDataset();
+</script>
+</body>
+</html>
